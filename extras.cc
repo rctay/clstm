@@ -77,15 +77,16 @@ template <class T>
 void gauss1d(mdarray<T> &out, mdarray<T> &in, float sigma) {
   out.resize(in.dim(0));
   // make a normalized mask
-  int range = 1 + int(3.0 * sigma);
+  int range = int(0.5 + 4.0 * sigma);
   floatarray mask(2 * range + 1);
-  for (int i = 0; i <= range; i++) {
+  mask(range) = 1.0;
+  float sum = 1.0;
+  for (int i = 1; i <= range; i++) {
     double y = exp(-i * i / 2.0 / sigma / sigma);
     mask(range + i) = mask(range - i) = y;
+    sum += 2.0 * y;
   }
-  float total = 0.0;
-  for (int i = 0; i < mask.dim(0); i++) total += mask(i);
-  for (int i = 0; i < mask.dim(0); i++) mask(i) /= total;
+  for (int i = 0; i < 2*range+1; i++) mask(i) /= sum;
 
   // apply it
   int n = in.size();
