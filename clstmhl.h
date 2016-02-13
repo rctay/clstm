@@ -168,10 +168,22 @@ struct CLSTMOCR {
   std::wstring predict(mdarray<float> &raw, vector<int> *where = 0) {
     normalizer->measure(raw);
     normalizer->normalize(image, raw);
+    std::cout << "assigning (" << image.dim(0) << ", " << image.dim(1) << ")" << std::endl;
+    for (int i=0; i<image.dim(0); i++) {
+      std::cout << i << ": ";
+      for (int j=0; j<image.dim(1); j++) {
+        std::cout << " " << image(i,j);
+      }
+      std::cout << std::endl;
+    }
     assign(net->inputs, image);
     net->forward();
     Classes outputs;
     trivial_decode(outputs, net->outputs, 0, where);
+    std::cout << "outputs (" << outputs.size() << ")" << std::endl;
+    for (int i = 0; i < outputs.size(); i++) {
+      std::cout << "c " << outputs[i] << std::endl;
+    }
     return net->decode(outputs);
   }
   void predict(vector<CharPrediction> &preds, mdarray<float> &raw) {

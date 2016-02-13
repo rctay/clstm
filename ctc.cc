@@ -164,6 +164,57 @@ void trivial_decode(Classes &cs, Sequence &outputs, int batch,
   cs.clear();
   if (locs) locs->clear();
   int N = outputs.size();
+  std::cout << "decoding outputs("<<N<<", "<<outputs[0].size()<<"): " << std::endl;
+  for (int i = 0; i < N; i++)
+    std::cout << outputs[i](0) << std::endl;
+  vector<int> tmp(N);
+  float THRESHOLD = 0.7;
+  // outputs[:,0]<threshold
+  for (int i = 0; i < N; i++)
+    tmp[i] = outputs[i](0) < THRESHOLD ? 1 : 0;
+  // measurements.label (1d)
+  enum {BG, FG} state = BG;
+  int i0; float maxval; int maxc;
+  for (int i = 0; i < N; i++) {
+    int curr = tmp[i];
+    switch (state) {
+    case FG:
+      if (curr == 0) {
+        state = BG;
+        for (int ii = i0; ii < i; ii++) {
+          for (int j = 0; j < outputs[ii].size(); j++) {
+            float curr = outputs[ii](j);
+            if (curr > maxval) {
+              maxval = curr;
+              maxc = j;
+            }
+          }
+        }
+        cs.push_back(maxc);
+      } else
+        ;
+      break;
+    case BG:
+      if (curr == 0)
+        ;
+      else {
+        state = FG;
+        i0 = i;
+        maxval = 0.0; maxc = 0;
+      }
+      break;
+    }
+  }
+  std::cout << "thresholded: " << std::endl;
+  for (int i = 0; i < N; i++)
+    std::cout << tmp[i] << std::endl;
+}
+
+void trivial_decode0(Classes &cs, Sequence &outputs, int batch,
+                    vector<int> *locs) {
+  cs.clear();
+  if (locs) locs->clear();
+  int N = outputs.size();
   int t = 0;
   float mv = 0;
   int mc = -1;

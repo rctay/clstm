@@ -61,8 +61,8 @@ if option("profile",0):
     env.Append(CCFLAGS="-g -pg".split())
     env.Append(LINKFLAGS="-g -pg".split())
 elif option("debug",0):
-    env.Append(CXXFLAGS="-g -fno-inline".split())
-    env.Append(CCFLAGS="-g".split())
+    env.Append(CXXFLAGS="-g -fno-inline -rdynamic".split())
+    env.Append(CCFLAGS="-g -rdynamic".split())
     env.Append(LINKFLAGS="-g".split())
 else:
     env.Append(CXXFLAGS="-g -O3 -finline".split())

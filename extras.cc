@@ -78,9 +78,9 @@ void gauss1d(mdarray<T> &out, mdarray<T> &in, float sigma) {
   out.resize(in.dim(0));
   // make a normalized mask
   int range = int(0.5 + 4.0 * sigma);
-  floatarray mask(2 * range + 1);
+  mdarray<double> mask(2 * range + 1);
   mask(range) = 1.0;
-  float sum = 1.0;
+  double sum = 1.0;
   for (int i = 1; i <= range; i++) {
     double y = exp(-i * i / 2.0 / sigma / sigma);
     mask(range + i) = mask(range - i) = y;
@@ -100,6 +100,29 @@ void gauss1d(mdarray<T> &out, mdarray<T> &in, float sigma) {
     }
     out(i) = T(total);
   }
+
+  int filter_size = mask.dim(0);
+  int size1 = filter_size / 2, size2 = filter_size - size1 - 1;
+  int symmetric = 0;
+  if (filter_size & 0x1) {
+    symmetric = 1;
+    for (int ii = 1; ii <= filter_size / 2; ii++) {
+      if (fabs(mask(ii+size1)-mask(size1-ii)) > std::numeric_limits<double>::epsilon()) {
+        symmetric = 0;
+        break;
+      }
+    }
+    if (symmetric == 0) {
+      symmetric = -1;
+      for (int ii = 1; ii <= filter_size/2; ii++) {
+        if (fabs(mask(size1+ii)+mask(size1-ii)) > std::numeric_limits<double>::epsilon()) {
+          symmetric = 0;
+          break;
+        }
+      }
+    }
+  }
+  std::cout << "symmetric " << symmetric << std::endl;
 }
 
 template void gauss1d(bytearray &out, bytearray &in, float sigma);
@@ -125,7 +148,7 @@ template void gauss1d(floatarray &v, float sigma);
 
 template <class T>
 void gauss2d(mdarray<T> &a, float sx, float sy) {
-  floatarray r, s;
+  mdarray<double> r, s;
   for (int i = 0; i < a.dim(0); i++) {
     getd0(a, r, i);
     gauss1d(s, r, sy);
@@ -222,11 +245,11 @@ struct MeanNormalizer : INormalizer {
   }
 };
 
-void argmax1(mdarray<float> &m, mdarray<float> &a) {
+void argmax1(mdarray<int> &m, mdarray<double> &a) {
   m.resize(a.dim(0));
   for (int i = 0; i < a.dim(0); i++) {
-    float mv = a(i, 0);
-    float mj = 0;
+    double mv = a(i, 0);
+    int mj = 0;
     for (int j = 1; j < a.dim(1); j++) {
       if (a(i, j) < mv) continue;
       mv = a(i, j);
@@ -248,9 +271,70 @@ inline void add_smear(mdarray<float> &smooth, mdarray<float> &line) {
   }
 }
 
+inline void uniform_filter(mdarray<double> &input, int d0_filter_size, int d1_filter_size) {
+  int d0 = input.dim(0);
+  int d1 = input.dim(1);
+  int d0_size1 = d0_filter_size / 2;
+  int d1_size1 = d1_filter_size / 2;
+  mdarray<double> temp(d0, d1), output(d0, d1);
+  temp = input;
+  for (int i = 0; i < d0; i++) {
+    double tmp = 0.0;
+    // j1 in -size1..0 is 0
+    for (int j = 0; j < d1_filter_size-d1_size1; j++)
+      tmp += temp(i, j);
+    tmp /= (double)d1_filter_size;
+    output(i,0) = tmp;
+    //naive:
+    //for (int j = 1, j1 = -d1_size1, j2 = -d1_size1 + d1_filter_size; j < d1; j++, j1++, j2++) {
+    //  double l1 = j1 < 0 ? 0.0 : j1 >= d1 ? 0.0 : temp(i, j1);
+    //  double l2 = j2 < 0 ? 0.0 : j2 >= d1 ? 0.0 : temp(i, j2);
+    //  tmp += (l2 - l1) / (double)d1_filter_size;
+    //  output(i, j) = tmp;
+    //}
+    int j_out = 1, j1 = 0, j2 = d1_size1;
+    for (int j = 0; j < d1_size1; j_out++, j++, j2++) {
+      tmp += temp(i, j2) / (double)d1_filter_size;
+      output(i, j_out) = tmp;
+    }
+    for (int j = 0; j < d1-d1_filter_size; j_out++, j++, j1++, j2++) {
+      tmp += (temp(i, j2) - temp(i, j1)) / (double)d1_filter_size;
+      output(i, j_out) = tmp;
+    }
+    for (int j = 0; j < d1_filter_size-d1_size1-1; j_out++, j++, j1++) {
+      tmp += -temp(i, j1) / (double)d1_filter_size;
+      output(i, j_out) = tmp;
+    }
+  }
+  temp = output;
+  for (int j = 0; j < d1; j++) {
+    double tmp = 0.0;
+    for (int i = 0; i < d0_filter_size-d0_size1; i++)
+      tmp += temp(i, j);
+    tmp /= (double)d0_filter_size;
+    output(0,j) = tmp;
+    int i_out = 1, i1 = 0, i2 = d0_size1;
+    for (int i = 0; i < d0_size1; i_out++, i++, i2++) {
+      tmp += temp(i2, j) / (double)d0_filter_size;
+      output(i_out, j) = tmp;
+    }
+    for (int i = 0; i < d0-d0_filter_size; i_out++, i++, i1++, i2++) {
+      tmp += (temp(i2, j) - temp(i1, j)) / (double)d0_filter_size;
+      output(i_out, j) = tmp;
+    }
+    for (int i = 0; i < d0_filter_size-d0_size1-1; i_out++, i++, i1++) {
+      tmp += -temp(i1, j) / (double)d0_filter_size;
+      output(i_out, j) = tmp;
+    }
+  }
+  for (int j = 0; j < d1; j++)
+    for (int i = 0; i < d0; i++)
+      input(i, j) += 0.001*output(i, j);
+}
+
 struct CenterNormalizer : INormalizer {
   pymulti::PyServer *py = 0;
-  mdarray<float> center;
+  mdarray<int> center;
   float r = -1;
   void setPyServer(void *p) { this->py = (pymulti::PyServer *)p; }
   void getparams(bool verbose) {
@@ -260,48 +344,130 @@ struct CenterNormalizer : INormalizer {
     if (verbose) print("center_normalizer", range, smooth2d, smooth1d);
   }
   void measure(mdarray<float> &line) {
-    mdarray<float> smooth, smooth2;
     int w = line.dim(0);
     int h = line.dim(1);
-    smooth.copy(line);
+    mdarray<double> smooth(w,h), smooth2;
+    for (int i=0; i<line.dim(0); i++)
+      for (int j=0; j<line.dim(1); j++)
+        smooth(i,j) = line(i,j);
+    std::cout << "image (" << line.dim(0) << ", " << line.dim(1) << ")" << std::endl;
+    for (int i=0; i<line.dim(0); i++) {
+      std::cout << i << ": ";
+      for (int j=0; j<line.dim(1); j++) {
+        std::cout << " " << line(i,j);
+      }
+      std::cout << std::endl;
+    }
     gauss2d(smooth, h * smooth2d, h * 0.5);
-    add_smear(smooth, line);  // just to avoid singularities
-    mdarray<float> a(w);
+    std::cout << "g1 (" << smooth.dim(0) << ", " << smooth.dim(1) << ")" << std::endl;
+    for (int i=0; i<smooth.dim(0); i++) {
+      std::cout << i << ": ";
+      for (int j=0; j<smooth.dim(1); j++)
+        printf(" %.12g", smooth(i,j));
+      std::cout << std::endl;
+    }
+    //add_smear(smooth, line);  // just to avoid singularities
+    uniform_filter(smooth, smooth.dim(0), smooth.dim(1)*0.5);
+    std::cout << "smoothed2 (" << smooth.dim(0) << ", " << smooth.dim(1) << ")" << std::endl;
+    for (int i=0; i<smooth.dim(0); i++) {
+      std::cout << i << ": ";
+      for (int j=0; j<smooth.dim(1); j++) {
+        printf(" %.12g", smooth(i,j));
+      }
+      std::cout << std::endl;
+    }
+    mdarray<int> a, a_g;
     argmax1(a, smooth);
     gauss1d(center, a, h * smooth1d);
-    float s1 = 0.0;
-    float sy = 0.0;
+    double s1 = 0.0;
+    double sy = 0.0;
     for (int i = 0; i < w; i++) {
       for (int j = 0; j < h; j++) {
         s1 += line(i, j);
         sy += line(i, j) * fabs(j - center(i));
       }
     }
-    float mad = sy / s1;
+    double mad = sy / s1;
     r = int(range * mad + 1);
-    if (py) {
-      print("r", r);
-      py->eval("ion(); clf()");
-      py->eval("subplot(211)");
-      py->imshowT(line, "cmap=cm.gray,interpolation='nearest'");
-      py->eval("subplot(212)");
-      py->imshowT(smooth, "cmap=cm.gray,interpolation='nearest'");
-      py->plot(center);
-      py->eval("print ginput(999)");
+    std::cout << "measured (" << a.dim(0) << ", " << ")" << std::endl;
+    for (int i=0; i<center.dim(0); i++) {
+      std::cout << i << ": ";
+      std::cout << " " << center(i);
+      std::cout << std::endl;
     }
+    printf("mad: %.12g %.12g\n", mad, s1);
+    std::cout << "r: " << r << std::endl;
+    //if (py) {
+    //  print("r", r);
+    //  py->eval("ion(); clf()");
+    //  py->eval("subplot(211)");
+    //  py->imshowT(line, "cmap=cm.gray,interpolation='nearest'");
+    //  py->eval("subplot(212)");
+    //  py->imshowT(smooth, "cmap=cm.gray,interpolation='nearest'");
+    //  py->plot(center);
+    //  py->eval("print ginput(999)");
+    //}
   }
   void normalize(mdarray<float> &out, mdarray<float> &in) {
     int w = in.dim(0);
     if (w != center.dim(0)) THROW("measure doesn't match normalize");
-    float scale = (2.0 * r) / target_height;
-    int target_width = max(int(w / scale), 1);
-    out.resize(target_width, target_height);
-    for (int i = 0; i < out.dim(0); i++) {
-      for (int j = 0; j < out.dim(1); j++) {
-        float x = scale * i;
-        float y = scale * (j - target_height / 2) + center(int(x));
-        out(i, j) = bilin(in, x, y);
+    int h = in.dim(1);
+    std::cout << "norm (" << in.dim(0) << ", " << in.dim(1) << ")" << std::endl;
+    for (int i=0; i<in.dim(0); i++) {
+      std::cout << i << ": ";
+      for (int j=0; j<in.dim(1); j++) {
+        std::cout << " " << in(i,j);
       }
+      std::cout << std::endl;
+    }
+    mdarray<float> padded(w,h*3);
+    for (int i = 0; i < w; i++) {
+      int j1 = 0;
+      for (int j = 0; j < h; j++, j1++)
+        padded(i, j1) = 0.0;
+      for (int j = 0; j < h; j++, j1++)
+        padded(i, j1) = in(i, j);
+      for (int j = 0; j < h; j++, j1++)
+        padded(i, j1) = 0.0;
+    }
+    std::cout << "padded (" << padded.dim(0) << ", " << padded.dim(1) << ")" << std::endl;
+    for (int i=0; i<padded.dim(0); i++) {
+      std::cout << i << ": ";
+      for (int j=0; j<padded.dim(1); j++)
+        std::cout << " " << padded(i, j);
+      std::cout << std::endl;
+    }
+    mdarray<float> dewarped(w,int(2*r));
+    for (int i = 0; i < w; i++) {
+      for (int j = center(i)+h-r, j1 = 0; j < center(i)+h+r; j++, j1++)
+        dewarped(i, j1) = padded(i, j);
+    }
+    std::cout << "dewarped (" << dewarped.dim(0) << ", " << dewarped.dim(1) << ")" << std::endl;
+    for (int i=0; i<dewarped.dim(0); i++) {
+      std::cout << i << ": ";
+      for (int j=0; j<dewarped.dim(1); j++)
+        std::cout << " " << dewarped(i, j);
+      std::cout << std::endl;
+    }
+    float scale = (float) dewarped.dim(1) / target_height;
+    int target_width = int(w / scale);
+    mdarray<float> out1(target_width, target_height);
+    for (int i = 0; i < out1.dim(0); i++) {
+      for (int j = 0; j < out1.dim(1); j++) {
+        float x = scale * i;
+        float y = scale * j;
+        out1(i, j) = bilin(dewarped, x, y);
+      }
+    }
+    out.resize(16+target_width+16,target_height);
+    for (int j = 0; j < target_height; j++) {
+      int i1 = 0;
+      for (int i = 0; i < 16; i++, i1++)
+        out(i1, j) = 0.0;
+      for (int i = 0; i < target_width; i++, i1++)
+        out(i1, j) = out1(i, j);
+      for (int i = 0; i < 16; i++, i1++)
+        out(i1, j) = 0.0;
     }
   }
 };

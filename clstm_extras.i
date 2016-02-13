@@ -66,8 +66,15 @@ struct GenericLSTM : INetwork {
 #define A array()
     void forward() {
         int N = inputs.size();
+        std::cout << "runlstm" << std::endl;
+        std::cout << "input" << std::endl; for (int t = 0; t < inputs.size(); t++) { std::cout << t; for (int jj=0; jj < inputs[t].size(); jj++) printf(" %.12g", inputs[t](jj)); std::cout << std::endl; }
+        //std::cout << "WGI (" << ROWS(WGI) << ", " << COLS(WGI) << ")" << std::endl; for (int ii=0;ii<ROWS(WGI);ii++) { std::cout << ii; for (int jj=0;jj<COLS(WGI);jj++) { printf(" %.12g", WGI(ii,jj)); } std::cout << std::endl; }
+        //std::cout << "WGF (" << ROWS(WGF) << ", " << COLS(WGF) << ")" << std::endl; for (int ii=0;ii<ROWS(WGF);ii++) { std::cout << ii; for (int jj=0;jj<COLS(WGF);jj++) { printf(" %.12g", WGF(ii,jj)); } std::cout << std::endl; }
+        //std::cout << "WGO (" << ROWS(WGO) << ", " << COLS(WGO) << ")" << std::endl; for (int ii=0;ii<ROWS(WGO);ii++) { std::cout << ii; for (int jj=0;jj<COLS(WGO);jj++) { printf(" %.12g", WGO(ii,jj)); } std::cout << std::endl; }
+        //std::cout << "WCI (" << ROWS(WCI) << ", " << COLS(WCI) << ")" << std::endl; for (int ii=0;ii<ROWS(WCI);ii++) { std::cout << ii; for (int jj=0;jj<COLS(WCI);jj++) { printf(" %.12g", WCI(ii,jj)); } std::cout << std::endl; }
         resize(N);
         for (int t = 0; t < N; t++) {
+            std::cout << "forward on input["<<t<<"]"; for (int jj=0; jj < inputs[t].size(); jj++) printf(" %.12g", inputs[t](jj)); std::cout << std::endl;
             int bs = COLS(inputs[t]);
             source[t].resize(nf, bs);
             BLOCK(source[t], 0, 0, 1, bs).setConstant(1);
@@ -75,6 +82,7 @@ struct GenericLSTM : INetwork {
             if (t == 0) BLOCK(source[t], 1+ni, 0, no, bs).setConstant(0);
             else BLOCK(source[t], 1+ni, 0, no, bs) = outputs[t-1];
             gix[t] = MATMUL(WGI, source[t]);
+            std::cout << "gix["<<t<<"]"; for (int jj=0; jj < gix[t].size(); jj++) printf(" %.12g", gix[t](jj)); std::cout << std::endl;
             gfx[t] = MATMUL(WGF, source[t]);
             gox[t] = MATMUL(WGO, source[t]);
             cix[t] = MATMUL(WCI, source[t]);
@@ -99,7 +107,9 @@ struct GenericLSTM : INetwork {
             }
             go[t] = nonlin<F>(gox[t]);
             outputs[t] = nonlin<H>(state[t]).A * go[t].A;
+            std::cout << "outputs["<<t<<"]"; for (int jj=0; jj < outputs[t].size(); jj++) printf(" %.12g", outputs[t](jj)); std::cout << std::endl;
         }
+        std::cout << "output" << std::endl; for (int t = 0; t < outputs.size(); t++) { std::cout << t; for (int jj=0; jj < outputs[t].size(); jj++) printf(" %.12g", outputs[t](jj)); std::cout << std::endl; }
     }
     void backward() {
         int N = inputs.size();

@@ -9,7 +9,7 @@
 #include <stdarg.h>
 
 #ifndef MAXEXP
-#define MAXEXP 30
+#define MAXEXP 100
 #endif
 
 namespace ocropus {
@@ -318,6 +318,7 @@ struct NetworkBase : INetwork {
 };
 
 inline Float limexp(Float x) {
+  //MAXEXP=100 for softmax to match exp(clip(_,-100,100))
 #if 1
   if (x < -MAXEXP) return exp(-MAXEXP);
   if (x > MAXEXP) return exp(MAXEXP);
@@ -328,7 +329,7 @@ inline Float limexp(Float x) {
 }
 
 inline Float sigmoid(Float x) {
-#if 1
+#if 0
   return 1.0 / (1.0 + limexp(-x));
 #else
   return 1.0 / (1.0 + exp(-x));
@@ -487,16 +488,23 @@ struct SoftmaxLayer : NetworkBase {
     makeEncoders();
   }
   void forward() {
+    std::cout << "runsoftmax" << std::endl;
+    //std::cout << "input" << std::endl; for (int t = 0; t < inputs.size(); t++) { std::cout << t; for (int jj=0; jj < inputs[t].size(); jj++) printf(" %.12g", inputs[t](jj)); std::cout << std::endl; }
+    std::cout << "W " << std::endl; for (int ii = 0; ii < W.rows(); ii++) { std::cout << ii; for (int jj=0; jj < W.cols(); jj++) printf(" %.12g", W(ii,jj)); std::cout << std::endl; }
     outputs.resize(inputs.size());
     int no = ROWS(W), bs = COLS(inputs[0]);
     for (int t = 0; t < inputs.size(); t++) {
       outputs[t].resize(no, bs);
       for (int b = 0; b < COLS(outputs[t]); b++) {
+        COL(outputs[t], b) = DOT(W, COL(inputs[t], b)) + w;
+        std::cout << "dot["<<t<<"] "<<b<<": "; for (int ii = 0; ii < outputs[t].rows(); ii++) printf(" %.12g", outputs[t](ii,b)); std::cout << std::endl;
         COL(outputs[t], b) = MAPFUN(DOT(W, COL(inputs[t], b)) + w, limexp);
         Float total = fmax(SUMREDUCE(COL(outputs[t], b)), 1e-9);
         COL(outputs[t], b) /= total;
+        std::cout << "fin["<<t<<"] "<<b<<": "; for (int ii = 0; ii < outputs[t].rows(); ii++) printf(" %.12g", outputs[t](ii,b)); std::cout << std::endl;
       }
     }
+    std::cout << "output" << std::endl; for (int t = 0; t < outputs.size(); t++) { std::cout << t; for (int jj=0; jj < outputs[t].size(); jj++) printf(" %.12g", outputs[t](jj)); std::cout << std::endl; }
   }
   void backward() {
     d_inputs.resize(d_outputs.size());
@@ -541,6 +549,8 @@ struct Stacked : NetworkBase {
   int noutput() { return sub[sub.size() - 1]->noutput(); }
   int ninput() { return sub[0]->ninput(); }
   void forward() {
+    std::cout << "runstacked" << std::endl;
+    std::cout << "input" << std::endl; for (int t = 0; t < inputs.size(); t++) { std::cout << t; for (int jj=0; jj < inputs[t].size(); jj++) printf(" %.12g", inputs[t](jj)); std::cout << std::endl; }
     assert(inputs.size() > 0);
     assert(sub.size() > 0);
     for (int n = 0; n < sub.size(); n++) {
@@ -552,6 +562,7 @@ struct Stacked : NetworkBase {
     }
     outputs = sub[sub.size() - 1]->outputs;
     assert(outputs.size() == inputs.size());
+    std::cout << "output" << std::endl; for (int t = 0; t < outputs.size(); t++) { std::cout << t; for (int jj=0; jj < outputs[t].size(); jj++) printf(" %.12g", outputs[t](jj)); std::cout << std::endl; }
   }
   void backward() {
     assert(outputs.size() > 0);
@@ -586,11 +597,14 @@ struct Reversed : NetworkBase {
   int noutput() { return sub[0]->noutput(); }
   int ninput() { return sub[0]->ninput(); }
   void forward() {
+    std::cout << "runreversed" << std::endl;
+    std::cout << "input" << std::endl; for (int t = 0; t < inputs.size(); t++) { std::cout << t; for (int jj=0; jj < inputs[t].size(); jj++) printf(" %.12g", inputs[t](jj)); std::cout << std::endl; }
     assert(sub.size() == 1);
     INetwork *net = sub[0].get();
     revcopy(net->inputs, inputs);
     net->forward();
     revcopy(outputs, net->outputs);
+    std::cout << "output" << std::endl; for (int t = 0; t < outputs.size(); t++) { std::cout << t; for (int jj=0; jj < outputs[t].size(); jj++) printf(" %.12g", outputs[t](jj)); std::cout << std::endl; }
   }
   void backward() {
     assert(sub.size() == 1);
@@ -612,6 +626,8 @@ struct Parallel : NetworkBase {
   int noutput() { return sub[0]->noutput() + sub[1]->noutput(); }
   int ninput() { return sub[0]->ninput(); }
   void forward() {
+    std::cout << "runparallel" << std::endl;
+    std::cout << "input" << std::endl; for (int t = 0; t < inputs.size(); t++) { std::cout << t; for (int jj=0; jj < inputs[t].size(); jj++) printf(" %.12g", inputs[t](jj)); std::cout << std::endl; }
     assert(sub.size() == 2);
     INetwork *net1 = sub[0].get();
     INetwork *net2 = sub[1].get();
@@ -632,6 +648,7 @@ struct Parallel : NetworkBase {
       BLOCK(outputs[t], 0, 0, n1, bs) = net1->outputs[t];
       BLOCK(outputs[t], n1, 0, n2, bs) = net2->outputs[t];
     }
+    std::cout << "output" << std::endl; for (int t = 0; t < outputs.size(); t++) { std::cout << t; for (int jj=0; jj < outputs[t].size(); jj++) printf(" %.12g", outputs[t](jj)); std::cout << std::endl; }
   }
   void backward() {
     assert(sub.size() == 2);

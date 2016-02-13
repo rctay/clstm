@@ -5,11 +5,51 @@
 #ifndef multidim_
 #define multidim_
 
+#include <execinfo.h>
+
+static void mkexc(const char *x) {
+  static unsigned const max_frames = 63;
+  void *addrlist[max_frames+1];
+  int addrlen;
+  addrlen = backtrace(addrlist, sizeof(addrlist) / sizeof(void*));
+  char **symbollist = backtrace_symbols(addrlist, addrlen);
+  for (int i = 0; i < addrlen; i++) {
+    std::cerr << "#" << i << ": " << symbollist[i] << std::endl;
+    size_t p = 0;
+    while (symbollist[i][p] != '(' && symbollist[i][p] != ' ' && symbollist[i][p] != 0)
+      ++p;
+    char syscom[256];
+    sprintf(syscom, "sudo addr2line %p -e %.*s", addrlist[i], p, symbollist[i]);
+    system(syscom);
+  }
+  THROW x;
+}
+
+#include <sys/wait.h>
+
+static void mktrace(const char *x) {
+  std::cerr << x << std::endl;
+  char pid_buf[30];
+  sprintf(pid_buf, "%d", getpid());
+  char name_buf[512];
+  name_buf[readlink("/proc/self/exe", name_buf, 511)]=0;
+  int child_pid = fork();
+  if (!child_pid) {
+    dup2(2,1);
+    fprintf(stdout, "stack trace for %s pid=%s\n", name_buf, pid_buf);
+    execlp("gdb", "gdb", "--batch", "-n", "-ex", "bt", name_buf, pid_buf, NULL);
+    abort();
+  } else {
+    waitpid(child_pid, NULL, 0);
+    abort();
+  }
+}
+
 #define MDSTR(X) #X
 #define MDSTR1(X) MDSTR(X)
 #define MDCHECK(X)                                          \
   while (!(X)) {                                            \
-    THROW("FAILED: " __FILE__ ":" MDSTR1(__LINE__) ":" #X); \
+    mkexc("FAILED: " __FILE__ ":" MDSTR1(__LINE__) ":" #X); \
   }
 
 #include <stdlib.h>
